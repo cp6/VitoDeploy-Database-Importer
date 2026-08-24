@@ -100,8 +100,15 @@ class RunDatabaseImportJob implements ShouldQueue
             $this->step($run, 55, 'Uploading normalized SQL archive');
             $remoteDirectory = '/home/'.$server->getSshUser().'/.vito-database-importer';
             $remotePath = $remoteDirectory.'/run-'.$run->id.'.sql.gz';
-            $server->ssh()->exec('mkdir -p '.escapeshellarg($remoteDirectory), 'database-import-prepare');
-            $server->ssh()->upload($normalized, $remotePath, $server->getSshUser(), 'database-import-upload', permission: '600');
+            // Keep this compatible with Vito releases whose SSH::upload() method
+            // predates the named $permission argument. The private directory
+            // protects the upload while chmod applies the final file mode.
+            $server->ssh()->exec(
+                'mkdir -p '.escapeshellarg($remoteDirectory).' && chmod 700 '.escapeshellarg($remoteDirectory),
+                'database-import-prepare',
+            );
+            $server->ssh()->upload($normalized, $remotePath, $server->getSshUser(), 'database-import-upload');
+            $server->ssh()->exec('chmod 600 '.escapeshellarg($remotePath), 'database-import-permissions');
 
             $this->guardCancelled($run);
             $this->step($run, 70, 'Importing database with '.$server->database()->name);
