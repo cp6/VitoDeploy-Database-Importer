@@ -33,6 +33,19 @@ test('the server feature action is active', function () {
     expect((new OpenImporter($this->server))->active())->toBeTrue();
 });
 
+test('the server feature primary action opens the importer for that server', function () {
+    $url = route('database-importer.index', ['server' => $this->server->id]);
+
+    $this->withHeader('X-Inertia', 'true')
+        ->post(route('server-features.action', [
+            'server' => $this->server,
+            'feature' => 'database-importer',
+            'action' => 'open',
+        ]))
+        ->assertStatus(409)
+        ->assertHeader('X-Inertia-Location', $url);
+});
+
 test('unauthenticated users cannot open importer routes', function () {
     auth()->logout();
     $this->get(route('database-importer.index'))->assertRedirect();

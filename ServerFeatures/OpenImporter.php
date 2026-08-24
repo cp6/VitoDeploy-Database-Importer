@@ -6,6 +6,8 @@ use App\DTOs\DynamicField;
 use App\DTOs\DynamicForm;
 use App\ServerFeatures\Action;
 use Illuminate\Http\Request;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Inertia\Inertia;
 
 class OpenImporter extends Action
 {
@@ -32,6 +34,12 @@ class OpenImporter extends Action
 
     public function handle(Request $request): void
     {
-        // This feature action only links to the importer.
+        // Vito's server-feature controller always returns back after invoking
+        // an action and does not use the handler's return value. Interrupt the
+        // response with Inertia's location response so the modal's primary
+        // button navigates just like the direct link in the form.
+        throw new HttpResponseException(Inertia::location(
+            route('database-importer.index', ['server' => $this->server->id]),
+        ));
     }
 }
