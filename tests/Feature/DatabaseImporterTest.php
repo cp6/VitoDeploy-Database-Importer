@@ -8,6 +8,7 @@ use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Support\ArchiveInspector;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Support\RemoteDumpDownloader;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Support\SqlEngineDetector;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -45,6 +46,26 @@ test('a direct download URL is validated and queued without passing the dump thr
     $run = ImportRun::query()->findOrFail($response->json('id'));
     expect(data_get($run->selection, 'download_url'))->toBe('https://downloads.example/database.sql.gz');
     Queue::assertPushed(DownloadImportFileJob::class, fn (DownloadImportFileJob $job) => $job->runId === $run->id);
+});
+
+test('an upload requires exactly one file or URL source', function () {
+    $this->postJson(route('database-importer.uploads.store'), [])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('file');
+
+    $this->postJson(route('database-importer.uploads.store'), [
+        'file' => UploadedFile::fake()->create('database.sql', 1, 'application/sql'),
+        'url' => 'https://downloads.example/database.sql',
+    ])->assertUnprocessable()->assertJsonValidationErrors('file');
+});
+
+test('the URL form honors the configured HTTP policy', function () {
+    config()->set('database-import.remote_download_require_https', false);
+
+    $this->get(route('database-importer.index'))
+        ->assertOk()
+        ->assertSee('Direct HTTP or HTTPS download URL')
+        ->assertSee('HTTP downloads are not encrypted');
 });
 
 test('direct download URLs cannot target private services', function () {

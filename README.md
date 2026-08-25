@@ -96,12 +96,13 @@ Defaults are defined in `config/database-import.php`:
 | `remote_download_timeout_seconds` | `7200` | Maximum total time for a remote download. |
 | `remote_download_max_redirects` | `5` | Maximum manually validated redirects. |
 | `remote_download_require_https` | `true` | Require encrypted direct download URLs. |
-| `remote_download_allowed_ports` | `[443]` | Allowed destination ports for remote downloads. |
+| `remote_download_allowed_ports` | `[80, 443]` | Allowed destination ports; HTTP still requires `remote_download_require_https` to be disabled. |
 | `minimum_remote_headroom_mb` | `512` | Free space reserved beyond the estimated import requirement. |
 | `failed_file_retention_hours` | `24` | Retry window before a failed staged upload is deleted. |
 | `drop_tables_on_uninstall` | `false` | Delete plugin history when uninstalling. |
 
 Override these values through the host application's `database-import` configuration.
+HTTP direct links are disabled by default because database dumps may contain secrets. To permit them, set `remote_download_require_https` to `false`; port 80 is already included in the default allowed-port list, and the importer displays an insecure-transfer warning.
 
 ## Safety backup behavior
 

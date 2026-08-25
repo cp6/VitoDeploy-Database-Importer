@@ -190,15 +190,18 @@ class RemoteDumpDownloader
         $parts = parse_url($url);
         $scheme = strtolower((string) ($parts['scheme'] ?? ''));
         $requiredScheme = (bool) config('database-import.remote_download_require_https', true) ? 'https' : null;
-        if (($requiredScheme !== null && $scheme !== $requiredScheme) || ! in_array($scheme, ['http', 'https'], true)) {
+        if ($requiredScheme !== null && $scheme !== $requiredScheme) {
             throw new RuntimeException('The remote database URL must use HTTPS.');
+        }
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            throw new RuntimeException('The remote database URL must use HTTP or HTTPS.');
         }
         if (isset($parts['user']) || isset($parts['pass'])) {
             throw new RuntimeException('Remote URLs containing embedded credentials are not allowed.');
         }
         $host = strtolower(rtrim((string) ($parts['host'] ?? ''), '.'));
         $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
-        $allowedPorts = array_map('intval', (array) config('database-import.remote_download_allowed_ports', [443]));
+        $allowedPorts = array_map('intval', (array) config('database-import.remote_download_allowed_ports', [80, 443]));
         if ($host === '' || ! in_array($port, $allowedPorts, true)) {
             throw new RuntimeException('The remote database URL uses a host or port that is not allowed.');
         }

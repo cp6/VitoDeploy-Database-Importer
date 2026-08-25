@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
 
@@ -72,6 +73,7 @@ class DatabaseImportController extends Controller
             'limits' => [
                 'uploadMb' => (int) config('database-import.max_upload_mb', 2048),
                 'extractedMb' => (int) config('database-import.max_extracted_mb', 8192),
+                'remoteRequireHttps' => (bool) config('database-import.remote_download_require_https', true),
             ],
             'urls' => [
                 'uploads' => route('database-importer.uploads.store'),
@@ -91,9 +93,16 @@ class DatabaseImportController extends Controller
     public function upload(Request $request, ArchiveInspector $archives, RemoteDumpDownloader $downloads): JsonResponse
     {
         app(SchemaManager::class)->ensureInstalled();
+        $hasFile = $request->hasFile('file');
+        $hasUrl = $request->filled('url');
+        if ($hasFile === $hasUrl) {
+            throw ValidationException::withMessages([
+                'file' => 'Choose exactly one source: a file upload or a direct URL.',
+            ]);
+        }
         $validated = $request->validate([
-            'file' => ['nullable', 'required_without:url', 'prohibited_with:url', 'file', 'max:'.((int) config('database-import.max_upload_mb', 2048) * 1024)],
-            'url' => ['nullable', 'required_without:file', 'prohibited_with:file', 'string', 'max:4096'],
+            'file' => ['nullable', 'file', 'max:'.((int) config('database-import.max_upload_mb', 2048) * 1024)],
+            'url' => ['nullable', 'string', 'max:4096'],
         ]);
         if (isset($validated['url'])) {
             return $this->queueRemoteDownload($request, $downloads, (string) $validated['url']);
