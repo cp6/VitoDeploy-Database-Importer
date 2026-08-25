@@ -8,9 +8,11 @@ use App\Models\DatabaseUser;
 use App\Models\Server;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Database\SchemaManager;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Jobs\CleanupImportFileJob;
+use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Jobs\DownloadImportFileJob;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Jobs\RunDatabaseImportJob;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Models\ImportRun;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Support\ArchiveInspector;
+use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Support\RemoteDumpDownloader;
 use App\Vito\Plugins\Cp6\VitoDeployDatabaseImporter\Support\SafetyChecker;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -86,12 +88,17 @@ class DatabaseImportController extends Controller
         ]);
     }
 
-    public function upload(Request $request, ArchiveInspector $archives): JsonResponse
+    public function upload(Request $request, ArchiveInspector $archives, RemoteDumpDownloader $downloads): JsonResponse
     {
         app(SchemaManager::class)->ensureInstalled();
         $validated = $request->validate([
-            'file' => ['required', 'file', 'max:'.((int) config('database-import.max_upload_mb', 2048) * 1024)],
+            'file' => ['nullable', 'required_without:url', 'prohibited_with:url', 'file', 'max:'.((int) config('database-import.max_upload_mb', 2048) * 1024)],
+            'url' => ['nullable', 'required_without:file', 'prohibited_with:file', 'string', 'max:4096'],
         ]);
+        if (isset($validated['url'])) {
+            return $this->queueRemoteDownload($request, $downloads, (string) $validated['url']);
+        }
+
         $file = $validated['file'];
         $originalName = basename((string) $file->getClientOriginalName());
         $extension = $this->acceptedExtension($originalName);
@@ -136,6 +143,45 @@ class DatabaseImportController extends Controller
             return response()->json($run->publicStatus(), 201);
         } catch (Throwable $e) {
             $disk->deleteDirectory(dirname($storedPath));
+
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    private function queueRemoteDownload(Request $request, RemoteDumpDownloader $downloads, string $url): JsonResponse
+    {
+        try {
+            $downloads->validate($url);
+        } catch (Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $disk = Storage::disk(config('database-import.disk', 'local'));
+        $directory = 'vito-database-imports/'.$request->user()->id.'/'.Str::uuid();
+        $temporaryPath = $directory.'/source.download';
+        try {
+            $run = ImportRun::query()->create([
+                'user_id' => $request->user()->id,
+                'project_id' => $request->user()->currentProject->id,
+                'status' => 'downloading',
+                'progress' => 0,
+                'current_step' => 'Remote download queued',
+                'original_name' => 'Remote database dump',
+                'stored_path' => $temporaryPath,
+                'file_size' => 0,
+                'extracted_size' => null,
+                'archive_type' => 'pending',
+                'detected_engine' => null,
+                'selection' => ['download_url' => $url],
+                'log' => [['at' => now()->toIso8601String(), 'message' => 'Remote database download queued.']],
+                'expires_at' => now()->addHours((int) config('database-import.failed_file_retention_hours', 24)),
+            ]);
+            DownloadImportFileJob::dispatch($run->id);
+            CleanupImportFileJob::dispatch($run->id)->delay($run->expires_at);
+
+            return response()->json($run->publicStatus(), 202);
+        } catch (Throwable $e) {
+            $disk->deleteDirectory($directory);
 
             return response()->json(['message' => $e->getMessage()], 422);
         }
@@ -284,8 +330,8 @@ class DatabaseImportController extends Controller
     public function destroy(Request $request, ImportRun $run): JsonResponse
     {
         $this->authorizeRun($request, $run);
-        if (in_array($run->status, ['pending', 'running'], true)) {
-            return response()->json(['message' => 'Cancel the active import before removing it.'], 422);
+        if (in_array($run->status, ['downloading', 'pending', 'running'], true)) {
+            return response()->json(['message' => 'Wait for the active download or import before removing it.'], 422);
         }
         Storage::disk(config('database-import.disk', 'local'))->deleteDirectory(dirname($run->stored_path));
         $run->delete();

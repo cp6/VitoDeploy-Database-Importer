@@ -22,7 +22,7 @@ class CleanupImportFileJob implements ShouldQueue
     public function handle(): void
     {
         $run = ImportRun::query()->find($this->runId);
-        if (! $run || in_array($run->status, ['pending', 'running'], true)) {
+        if (! $run || in_array($run->status, ['downloading', 'pending', 'running'], true)) {
             return;
         }
         if ($run->expires_at && $run->expires_at->isFuture()) {

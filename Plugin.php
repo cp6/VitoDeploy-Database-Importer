@@ -15,7 +15,7 @@ class Plugin extends AbstractPlugin
 {
     protected string $name = 'Database Importer';
 
-    protected string $description = 'Upload and securely import SQL databases into VitoDeploy.';
+    protected string $description = 'Upload or securely download and import SQL databases into VitoDeploy.';
 
     public function boot(): void
     {
@@ -70,7 +70,7 @@ class Plugin extends AbstractPlugin
     {
         RegisterServerFeature::make('database-importer')
             ->label('Database Importer')
-            ->description('Upload an SQL dump and import it into a database on this server')
+            ->description('Upload or download an SQL dump and import it into a database on this server')
             ->register();
 
         RegisterServerFeatureAction::make('database-importer', 'open')

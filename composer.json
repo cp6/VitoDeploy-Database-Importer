@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
+        "ext-curl": "*",
         "ext-zlib": "*"
     },
     "suggest": {

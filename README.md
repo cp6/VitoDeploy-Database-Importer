@@ -1,12 +1,12 @@
 # VitoDeploy Database Importer
 
-A VitoDeploy 4.x plugin for securely uploading `.sql`, `.sql.gz`, and `.zip` database dumps, reviewing the destination, and running the restore in Vito's background queue.
+A VitoDeploy 4.x plugin for securely uploading or downloading `.sql`, `.sql.gz`, and `.zip` database dumps, reviewing the destination, and running the restore in Vito's background queue.
 
 The interface follows the same responsive Vito-native design language as [VitoDeploy Forge Importer](https://github.com/cp6/VitoDeploy-Forge-Importer): a four-step workflow, Vito typography and tokens, dark mode, compatibility checks, progress, redacted logs, and retry controls.
 
 ## Workflow
 
-1. Upload an `.sql`, `.sql.gz`, or `.zip` file.
+1. Upload an `.sql`, `.sql.gz`, or `.zip` file, or provide a direct HTTPS download URL.
 2. Select a Vito server and confirm the source database engine.
 3. Select or create the destination database.
 4. Select or create a database user. The selected user is linked after restore.
@@ -20,6 +20,9 @@ Vito's administrative MySQL/MariaDB or PostgreSQL access performs the restore. T
 ## Features
 
 - Streams uploads to local storage instead of loading the dump into PHP memory.
+- Fetches direct URLs in the background queue, avoiding browser and reverse-proxy request-body limits.
+- Restricts remote downloads to HTTPS public-internet targets, revalidates and DNS-pins every redirect, and blocks embedded credentials and private/reserved network addresses.
+- Enforces the compressed-size limit while streaming and verifies `Content-Length`, bytes written to disk, and advertised `Content-MD5` or SHA-256 digests when present.
 - Supports raw SQL, gzip, and ZIP archives containing exactly one `.sql` file.
 - Detects MySQL, MariaDB, and PostgreSQL dump signatures and checks destination compatibility.
 - Selects or creates a database and database user using Vito's native actions.
@@ -56,6 +59,7 @@ Gzip data is streamed once during inspection to verify it and enforce the extrac
 - PHP zlib extension
 - PHP zip extension when accepting `.zip` uploads
 - A running Vito `default` and `ssh` queue worker
+- PHP cURL extension when accepting direct download URLs
 - A ready destination server with MySQL, MariaDB, or PostgreSQL installed
 - PHP `upload_max_filesize` and `post_max_size` values at least as large as `max_upload_mb`
 - Enough free space on the Vito host for staged uploads and on the destination host for restore work
@@ -88,6 +92,11 @@ Defaults are defined in `config/database-import.php`:
 | `max_extracted_mb` | `8192` | Maximum raw SQL size after decompression. |
 | `max_zip_entries` | `20` | Maximum ZIP central-directory entries. |
 | `max_zip_ratio` | `200` | Maximum uncompressed-to-compressed ratio for the SQL entry. |
+| `remote_download_connect_timeout_seconds` | `15` | Maximum time to establish each remote connection. |
+| `remote_download_timeout_seconds` | `7200` | Maximum total time for a remote download. |
+| `remote_download_max_redirects` | `5` | Maximum manually validated redirects. |
+| `remote_download_require_https` | `true` | Require encrypted direct download URLs. |
+| `remote_download_allowed_ports` | `[443]` | Allowed destination ports for remote downloads. |
 | `minimum_remote_headroom_mb` | `512` | Free space reserved beyond the estimated import requirement. |
 | `failed_file_retention_hours` | `24` | Retry window before a failed staged upload is deleted. |
 | `drop_tables_on_uninstall` | `false` | Delete plugin history when uninstalling. |
